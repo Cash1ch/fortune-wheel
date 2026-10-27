@@ -26,7 +26,15 @@ jobs:
         run: pip install buildozer "cython==0.29.36" setuptools
 
       - name: Build APK
-        run: yes | buildozer -v android debug
+        run: yes | buildozer -v android debug > build.log 2>&1
+
+      - name: Show end of log (on failure)
+        if: failure()
+        run: |
+          echo "=== ERRORS ==="
+          grep -n -i -E "error|failed|traceback|not found|cannot" build.log | grep -v -i "deprecated" | tail -n 40
+          echo "=== LAST 60 LINES ==="
+          tail -n 60 build.log
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
