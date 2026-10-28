@@ -74,16 +74,6 @@ def _draw_petal(size):
     Ellipse(pos=(-size / 2, -size * 0.3), size=(size, size * 0.6))
 
 
-# Оформление фона у каждого стиля: (тип, цвет, число элементов, диапазон размера в dp)
-DECOR = {
-    "classic": ("sparkle", (255, 217, 138), 22, (3, 9)),
-    "nte": ("grid", (0, 240, 255), 0, (0, 0)),
-    "sakura": ("petal", (255, 160, 185), 18, (14, 28)),
-    "paws": ("paw", (201, 162, 122), 14, (14, 28)),
-}
-SEEDS = {"classic": 11, "nte": 22, "sakura": 33, "paws": 44}
-
-
 class FortuneWheel(Widget):
     __events__ = ("on_spin_start", "on_peg", "on_speed", "on_finished", "on_tap")
 
@@ -228,8 +218,6 @@ class FortuneWheel(Widget):
         self._dim_alpha = wt["dim"][3] / 255.0
 
         with self.canvas:
-            self._draw_decor(cx, cy, R, w, h)
-
             # свечение (аура): концентрические полупрозрачные круги
             glow_r = max(R + 1, min(R + margin - 2, side / 2 - 1))
             for k in range(10):
@@ -332,54 +320,6 @@ class FortuneWheel(Widget):
         self._shown_winner = None
         self._sync()
 
-    # ------------------------------------------------------------------ оформление стиля
-    def _draw_decor(self, cx, cy, R, w, h):
-        kind, color, count, (smin, smax) = DECOR[self.theme]
-        rnd = random.Random(SEEDS[self.theme])
-        x0, y0 = self.x, self.y
-        if kind == "grid":                                   # неоновая сетка + угловые скобки
-            Color(*_c(color, 0.07))
-            gap = dp(38)
-            xx = x0
-            while xx <= x0 + w:
-                Line(points=[xx, y0, xx, y0 + h], width=1)
-                xx += gap
-            yy = y0
-            while yy <= y0 + h:
-                Line(points=[x0, yy, x0 + w, yy], width=1)
-                yy += gap
-            L = dp(26)
-            for (px, py, sx, sy, col) in ((x0 + dp(6), y0 + h - dp(6), 1, -1, color),
-                                          (x0 + w - dp(6), y0 + h - dp(6), -1, -1, "#ff2a8d"),
-                                          (x0 + dp(6), y0 + dp(6), 1, 1, "#ff2a8d"),
-                                          (x0 + w - dp(6), y0 + dp(6), -1, 1, color)):
-                Color(*_c(col, 0.8))
-                Line(points=[px + sx * L, py, px, py, px, py + sy * L], width=dp(1.5))
-            return
-        for _ in range(count):
-            x = x0 + rnd.random() * w
-            y = y0 + rnd.random() * h
-            size = dp(rnd.uniform(smin, smax))
-            rot = rnd.uniform(0, 360)
-            alpha = rnd.uniform(0.18, 0.40)
-            if math.hypot(x - cx, y - cy) < R * 1.1:         # под колесом всё равно не видно
-                continue
-            PushMatrix()
-            Translate(x, y)
-            Rotate(angle=rot, origin=(0, 0))
-            if kind == "paw":
-                Color(*_c(color, alpha * 0.7))
-                _draw_paw(size)
-            elif kind == "petal":
-                Color(*_c(color, alpha * 1.4))
-                _draw_petal(size)
-            else:                                            # sparkle: точка + крестик
-                Color(*_c(color, alpha * 2.0))
-                Ellipse(pos=(-size / 3, -size / 3), size=(size * 2 / 3, size * 2 / 3))
-                Line(points=[-size, 0, size, 0], width=1)
-                Line(points=[0, -size, 0, size], width=1)
-            PopMatrix()
-
     def _draw_hub(self, cx, cy, R, wt):
         hub = R * 0.15
         Color(*_c(wt["hub"][2]))
@@ -443,3 +383,153 @@ class FortuneWheel(Widget):
                 self.dispatch("on_tap")
             return True
         return super().on_touch_up(touch)
+
+
+# =====================================================================================================
+#  Анимированный фон: свой у каждого стиля. Всё строится один раз, в кадре двигаются готовые объекты.
+# =====================================================================================================
+BG = {
+    # kind, цвета, число элементов, диапазон размера (dp)
+    "classic": ("sparkle", ((255, 217, 138), (255, 240, 190)), 26, (3, 9)),
+    "nte": ("grid", ((0, 240, 255),), 0, (0, 0)),
+    "sakura": ("petal", ((255, 160, 185), (255, 214, 224)), 24, (12, 24)),
+    "paws": ("paw", ((201, 162, 122),), 16, (14, 28)),
+}
+BG_SEEDS = {"classic": 11, "nte": 22, "sakura": 33, "paws": 44}
+GRID_GAP = 38
+
+
+class AnimatedBackground(Widget):
+    """Лапки плывут вверх, лепестки падают, искры мерцают, неоновая сетка едет с лучом-сканером."""
+    FPS = 24.0                                   # меньше кадров — меньше расход батареи
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.theme = "classic"
+        self._items = []
+        self._grid = None
+        self._scan = None
+        self._scan_h = 0.0
+        self._brackets = []
+        self._t = 0.0
+        self._ev = None
+        self.bind(pos=self._rebuild, size=self._rebuild)
+
+    def set_theme(self, name):
+        self.theme = name if name in BG else "classic"
+        self._rebuild()
+
+    def start(self):
+        if self._ev is None:
+            self._ev = Clock.schedule_interval(self._step, 1.0 / self.FPS)
+
+    def stop(self):
+        if self._ev is not None:
+            self._ev.cancel()
+            self._ev = None
+
+    # ------------------------------------------------------------------ построение
+    def _rebuild(self, *_):
+        self.canvas.clear()
+        self._items, self._grid, self._scan, self._brackets = [], None, None, []
+        w, h = self.size
+        if w < 10 or h < 10:
+            return
+        kind, colors, count, (smin, smax) = BG[self.theme]
+        rnd = random.Random(BG_SEEDS[self.theme])
+        x0, y0 = self.x, self.y
+        with self.canvas:
+            if kind == "grid":
+                self._build_grid(x0, y0, w, h, colors[0])
+                return
+            for _ in range(count):
+                size = dp(rnd.uniform(smin, smax))
+                d = {"kind": kind, "size": size, "x0": x0 + rnd.random() * w,
+                     "y": y0 - size + rnd.random() * (h + 2 * size), "ph": rnd.uniform(0, 6.28)}
+                PushMatrix()
+                d["tr"] = Translate(d["x0"], d["y"])
+                d["rot"] = Rotate(angle=rnd.uniform(0, 360), origin=(0, 0))
+                d["col"] = Color(*_c(rnd.choice(colors), 0.0))
+                if kind == "paw":
+                    d.update(vy=dp(rnd.uniform(10, 24)), amp=dp(rnd.uniform(8, 22)), f=rnd.uniform(0.3, 0.7),
+                             alpha=rnd.uniform(0.16, 0.32), a0=d["rot"].angle)
+                    _draw_paw(size)
+                elif kind == "petal":
+                    d.update(vy=-dp(rnd.uniform(22, 48)), amp=dp(rnd.uniform(10, 28)), f=rnd.uniform(0.4, 0.9),
+                             alpha=rnd.uniform(0.35, 0.60), spin=rnd.uniform(-60, 60))
+                    _draw_petal(size)
+                else:                                          # sparkle: точка + крестик
+                    d.update(vy=dp(rnd.uniform(2, 8)), f=rnd.uniform(0.8, 2.2), alpha=rnd.uniform(0.4, 0.9))
+                    Ellipse(pos=(-size / 3, -size / 3), size=(size * 2 / 3, size * 2 / 3))
+                    Line(points=[-size, 0, size, 0], width=1)
+                    Line(points=[0, -size, 0, size], width=1)
+                PopMatrix()
+                self._items.append(d)
+
+    def _build_grid(self, x0, y0, w, h, color):
+        gap = dp(GRID_GAP)
+        Color(*_c(color, 0.07))
+        xx = x0
+        while xx <= x0 + w:                                   # вертикали стоят
+            Line(points=[xx, y0, xx, y0 + h], width=1)
+            xx += gap
+        PushMatrix()                                          # горизонтали едут вверх, бесшовно
+        self._grid = Translate(0, 0)
+        yy = y0 - gap
+        while yy <= y0 + h + gap:
+            Line(points=[x0, yy, x0 + w, yy], width=1)
+            yy += gap
+        PopMatrix()
+        L, m = dp(26), dp(6)
+        for px, py, sx, sy, col in ((x0 + m, y0 + h - m, 1, -1, color), (x0 + w - m, y0 + h - m, -1, -1, "#ff2a8d"),
+                                    (x0 + m, y0 + m, 1, 1, "#ff2a8d"), (x0 + w - m, y0 + m, -1, 1, color)):
+            c = Color(*_c(col, 0.8))
+            Line(points=[px + sx * L, py, px, py, px, py + sy * L], width=dp(1.5))
+            self._brackets.append(c)
+        self._scan_h = dp(3)                                  # луч-сканер: полоса + мягкое свечение
+        glow = Color(*_c(color, 0.035))
+        self._scan_glow = Rectangle(pos=(x0, y0 + h), size=(w, dp(30)))
+        beam = Color(*_c(color, 0.12))
+        self._scan = Rectangle(pos=(x0, y0 + h), size=(w, self._scan_h))
+        self._scan_cols = (glow, beam)
+
+    # ------------------------------------------------------------------ анимация
+    def _step(self, dt):
+        dt = min(dt, 0.1)
+        self._t += dt
+        t = self._t
+        w, h = self.size
+        x0, y0 = self.x, self.y
+        top = y0 + h
+        edge = dp(60)
+        for d in self._items:
+            k, size = d["kind"], d["size"]
+            d["y"] += d["vy"] * dt
+            if d["vy"] > 0 and d["y"] > top + size * 1.5:      # вылетел вверх — снова снизу
+                d["y"] = y0 - size * 1.5
+            elif d["vy"] < 0 and d["y"] < y0 - size * 1.5:     # упал вниз — снова сверху
+                d["y"] = top + size * 1.5
+                d["x0"] = x0 + random.random() * w
+            fade = min(1.0, max(0.0, (d["y"] - y0) / edge), max(0.0, (top - d["y"]) / edge))
+            if k == "paw":
+                x = d["x0"] + math.sin(t * d["f"] + d["ph"]) * d["amp"]
+                d["rot"].angle = d["a0"] + math.sin(t * d["f"] * 1.3 + d["ph"]) * 14
+                d["col"].a = d["alpha"] * fade
+            elif k == "petal":
+                x = d["x0"] + math.sin(t * d["f"] + d["ph"]) * d["amp"]
+                d["rot"].angle += d["spin"] * dt
+                d["col"].a = d["alpha"] * fade
+            else:
+                x = d["x0"]
+                d["col"].a = d["alpha"] * (0.5 + 0.5 * math.sin(t * d["f"] + d["ph"])) * fade
+            d["tr"].xy = (x, d["y"])
+        if self._grid is not None:
+            gap = dp(GRID_GAP)
+            self._grid.xy = (0, (t * dp(16)) % gap)
+            span = h + self._scan_h + dp(30)
+            y = top - ((t * dp(70)) % span)
+            self._scan.pos = (x0, y)
+            self._scan_glow.pos = (x0, y - dp(14))
+            pulse = 0.65 + 0.35 * math.sin(t * 2.0)
+            for c in self._brackets:
+                c.a = 0.8 * pulse

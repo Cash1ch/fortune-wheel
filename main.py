@@ -17,6 +17,7 @@ from kivy.metrics import dp
 from kivy.properties import BooleanProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.modalview import ModalView
@@ -26,7 +27,7 @@ from kivy.utils import get_color_from_hex, platform
 
 from fortune_core import FortuneState, INTRO_TEXTS, THEMES, THEME_ORDER
 from sounds import Feedback
-from wheel_widget import FortuneWheel  # noqa: F401  (нужен для KV)
+from wheel_widget import AnimatedBackground, FortuneWheel  # noqa: F401  (нужны для KV)
 
 Window.softinput_mode = "below_target"          # клавиатура не перекрывает поле ввода
 if platform not in ("android", "ios"):
@@ -49,9 +50,6 @@ KV = """
             radius: [dp(14)]
 
 <Root>:
-    orientation: 'vertical'
-    padding: dp(12), dp(8), dp(12), dp(12)
-    spacing: dp(6)
     canvas.before:
         Color:
             rgba: app.c_bg
@@ -59,90 +57,102 @@ KV = """
             pos: self.pos
             size: self.size
 
-    Label:
-        text: app.title_text
-        font_size: '22sp'
-        bold: True
-        color: app.c_title
-        size_hint_y: None
-        height: dp(38)
-    Label:
-        text: app.intro_text
-        italic: True
-        color: app.c_text
-        font_size: '13sp'
-        halign: 'center'
-        valign: 'middle'
-        text_size: self.width - dp(16), None
-        size_hint_y: None
-        height: self.texture_size[1] + dp(6)
-    Label:
-        text: app.subtitle
-        font_size: '12sp'
-        color: app.c_hint
-        size_hint_y: None
-        height: dp(18)
-
-    FloatLayout:
-        FortuneWheel:
-            id: wheel
-            size_hint: 1, 1
-            pos_hint: {'x': 0, 'y': 0}
-
-    Label:
-        text: app.status
-        color: app.c_hint
-        font_size: '14sp'
-        size_hint_y: None
-        height: dp(24)
+    AnimatedBackground:
+        id: bg
+        size_hint: 1, 1
+        pos_hint: {'x': 0, 'y': 0}
 
     BoxLayout:
-        size_hint_y: None
-        height: dp(52)
-        spacing: dp(8)
-        FlatButton:
-            text: 'Варианты (%d)' % app.option_count
-            disabled: app.busy
-            on_release: app.open_options()
-        FlatButton:
-            text: 'Стиль'
-            disabled: app.busy
-            on_release: app.open_styles()
-        FlatButton:
-            text: 'На выбывание: ' + ('вкл' if app.elim_on else 'выкл')
-            disabled: app.busy
-            on_release: app.toggle_elim()
-        FlatButton:
-            text: 'Звук: ' + ('вкл' if app.sound_on else 'выкл')
-            on_release: app.toggle_sound()
+        orientation: 'vertical'
+        padding: dp(12), dp(8), dp(12), dp(12)
+        spacing: dp(6)
+        size_hint: 1, 1
+        pos_hint: {'x': 0, 'y': 0}
 
-    Button:
-        id: spin_btn
-        text: 'Удачи!'
-        font_size: '24sp'
-        bold: True
-        size_hint_y: None
-        height: dp(72)
-        disabled: app.busy or not app.has_options
-        background_normal: ''
-        background_down: ''
-        background_color: 0, 0, 0, 0
-        color: app.c_spin_fg if not self.disabled else app.c_hint
-        on_release: app.spin()
-        canvas.before:
-            Color:
-                rgba: (app.c_spin if not self.disabled else (0.5, 0.5, 0.5, 0.35))
-            RoundedRectangle:
-                pos: self.pos
-                size: self.size
-                radius: [dp(20)]
+        Label:
+            text: app.title_text
+            font_size: '22sp'
+            bold: True
+            color: app.c_title
+            size_hint_y: None
+            height: dp(38)
+        Label:
+            text: app.intro_text
+            italic: True
+            color: app.c_text
+            font_size: '13sp'
+            halign: 'center'
+            valign: 'middle'
+            text_size: self.width - dp(16), None
+            size_hint_y: None
+            height: self.texture_size[1] + dp(6)
+        Label:
+            text: app.subtitle
+            font_size: '12sp'
+            color: app.c_hint
+            size_hint_y: None
+            height: dp(18)
+
+        FloatLayout:
+            FortuneWheel:
+                id: wheel
+                size_hint: 1, 1
+                pos_hint: {'x': 0, 'y': 0}
+
+        Label:
+            text: app.status
+            color: app.c_hint
+            font_size: '14sp'
+            size_hint_y: None
+            height: dp(24)
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(52)
+            spacing: dp(8)
+            FlatButton:
+                text: 'Варианты (%d)' % app.option_count
+                disabled: app.busy
+                on_release: app.open_options()
+            FlatButton:
+                text: 'Стиль'
+                disabled: app.busy
+                on_release: app.open_styles()
+            FlatButton:
+                text: 'На выбывание: ' + ('вкл' if app.elim_on else 'выкл')
+                disabled: app.busy
+                on_release: app.toggle_elim()
+            FlatButton:
+                text: 'Звук: ' + ('вкл' if app.sound_on else 'выкл')
+                on_release: app.toggle_sound()
+
+        Button:
+            id: spin_btn
+            text: 'Удачи!'
+            font_size: '24sp'
+            bold: True
+            size_hint_y: None
+            height: dp(72)
+            disabled: app.busy or not app.has_options
+            background_normal: ''
+            background_down: ''
+            background_color: 0, 0, 0, 0
+            color: app.c_spin_fg if not self.disabled else app.c_hint
+            on_release: app.spin()
+            canvas.before:
+                Color:
+                    rgba: (app.c_spin if not self.disabled else (0.5, 0.5, 0.5, 0.35))
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [dp(20)]
 """
 
 STATE_FILE = "state.json"
 NO_OPTIONS_HINT = "Нажмите «Варианты» и впишите свои варианты."
 
 
-class Root(BoxLayout):
+class Root(FloatLayout):
     pass
 
 
@@ -175,6 +185,7 @@ class FortuneApp(App):
         Builder.load_string(KV)
         self.root_widget = Root()
         self.wheel = self.root_widget.ids.wheel
+        self.bg = self.root_widget.ids.bg
         saved = self._load()
         self.state = FortuneState(saved.get("options", []), saved.get("elim_on", False))
         self.spins = int(saved.get("spins", 0))
@@ -190,17 +201,23 @@ class FortuneApp(App):
         self._elim_ev = None
         self._apply_theme(saved.get("theme", "classic"))
         self._refresh_wheel()
+        self.bg.start()
         Window.bind(on_keyboard=self._on_key)
         return self.root_widget
 
     def on_pause(self):
         self._save()
         self.feedback.ambient_stop()
+        self.bg.stop()
         return True
+
+    def on_resume(self):
+        self.bg.start()
 
     def on_stop(self):
         self._save()
         self.feedback.ambient_stop()
+        self.bg.stop()
         self.wheel.stop()
 
     def _on_key(self, _win, key, *_args):          # кнопка «Назад» на Android
@@ -250,6 +267,7 @@ class FortuneApp(App):
         self.c_spin_fg = get_color_from_hex(ui["spin_fg"])
         Window.clearcolor = self.c_bg
         self.wheel.set_theme(name)
+        self.bg.set_theme(name)                     # свой анимированный фон у каждого стиля
         self.feedback.set_theme(name)               # свой набор звуков у каждого стиля
         self._update_subtitle()
 
@@ -313,8 +331,10 @@ class FortuneApp(App):
         self._hide_card()
         th = THEMES[self.theme_name]
         ui = th["ui"]
+        # background_color с альфой 0: иначе ModalView рисует свой тёмный прямоугольник,
+        # и его углы торчат из-под скруглённой карточки
         view = ModalView(size_hint=(0.88, None), height=dp(280), auto_dismiss=True,
-                         background="", background_color=(0, 0, 0, 0.35), overlay_color=(0, 0, 0, 0.35))
+                         background="", background_color=(0, 0, 0, 0), overlay_color=(0, 0, 0, 0.35))
         box = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(8))
         with box.canvas.before:
             Color(*get_color_from_hex(ui["card"]))
@@ -338,7 +358,11 @@ class FortuneApp(App):
         box.add_widget(mk(text, "28sp", ui["card_text"], True))
         box.add_widget(mk(sub if sub is not None else th["win_sub"], "13sp", ui["card_top"], False, dp(34)))
         ok = Button(text="Ок", size_hint_y=None, height=dp(48), background_normal="", background_down="",
-                    background_color=self.c_spin, color=self.c_spin_fg, bold=True, font_size="18sp")
+                    background_color=(0, 0, 0, 0), color=self.c_spin_fg, bold=True, font_size="18sp")
+        with ok.canvas.before:
+            Color(*self.c_spin)
+            ok_bg = RoundedRectangle(radius=[dp(14)])
+        ok.bind(pos=lambda w, v: setattr(ok_bg, "pos", v), size=lambda w, v: setattr(ok_bg, "size", v))
         ok.bind(on_release=lambda *_: view.dismiss())
         box.add_widget(ok)
         view.add_widget(box)
