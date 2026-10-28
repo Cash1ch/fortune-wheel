@@ -70,6 +70,9 @@ def _draw_paw(size):
         Ellipse(pos=((dx - s / 2) * size, (dy - s * 0.6) * size), size=(s * size, s * 1.2 * size))
 
 
+PAW_LO, PAW_HI = -0.6200, 1.0560           # габарит лапки по Y в долях size
+
+
 def _draw_petal(size):
     Ellipse(pos=(-size / 2, -size * 0.3), size=(size, size * 0.6))
 
@@ -331,8 +334,10 @@ class FortuneWheel(Widget):
         PushMatrix()
         Translate(cx, cy)
         Color(*_c(wt["star"]))
-        if self.theme == "paws":                             # лапка
-            _draw_paw(hub * 0.62)
+        if self.theme == "paws":                             # лапка, по центру втулки
+            size = hub * 0.62
+            Translate(0, -((PAW_LO + PAW_HI) / 2) * size)            # габарит лапки смещён вверх — опускаем в центр
+            _draw_paw(size)
         elif self.theme == "sakura":                         # цветок сакуры
             for k in range(5):
                 PushMatrix()

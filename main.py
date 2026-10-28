@@ -192,7 +192,7 @@ class FortuneApp(App):
         self.sound_on = bool(saved.get("sound", True))
         self.elim_on = self.state.elim_on
         self.feedback = Feedback(os.path.join(self.user_data_dir, "sfx"))
-        self.feedback.enabled = self.sound_on
+        self.feedback.set_enabled(self.sound_on)
 
         self.wheel.bind(on_peg=lambda _w, speed: self.feedback.tick(speed),
                         on_finished=lambda _w, idx: self._on_finished(idx),
@@ -202,21 +202,23 @@ class FortuneApp(App):
         self._apply_theme(saved.get("theme", "classic"))
         self._refresh_wheel()
         self.bg.start()
+        self.feedback.music_on()                    # фоновая музыка стиля, пока приложение на экране
         Window.bind(on_keyboard=self._on_key)
         return self.root_widget
 
     def on_pause(self):
         self._save()
-        self.feedback.ambient_stop()
+        self.feedback.music_off()
         self.bg.stop()
         return True
 
     def on_resume(self):
         self.bg.start()
+        self.feedback.music_on()
 
     def on_stop(self):
         self._save()
-        self.feedback.ambient_stop()
+        self.feedback.music_off()
         self.bg.stop()
         self.wheel.stop()
 
@@ -291,13 +293,10 @@ class FortuneApp(App):
         self._hide_card()
         self._refresh_wheel()                      # колесо показывает актуальный пул (после сброса круга)
         self.busy = True
-        if self.wheel.spin():
-            self.feedback.ambient_start()
-        else:
+        if not self.wheel.spin():
             self.busy = False
 
     def _on_finished(self, index):
-        self.feedback.ambient_stop()
         self.spins += 1
         self._update_subtitle()
         self._save()
@@ -393,9 +392,7 @@ class FortuneApp(App):
 
     def toggle_sound(self):
         self.sound_on = not self.sound_on
-        self.feedback.enabled = self.sound_on
-        if not self.sound_on:
-            self.feedback.ambient_stop()
+        self.feedback.set_enabled(self.sound_on)
         self._save()
 
     # ------------------------------------------------------------------ окно «Варианты судьбы»
