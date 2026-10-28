@@ -1,18 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Колесо Фортуны — мобильное приложение (Kivy). Интерфейс на русском.
+"""Колесо Фортуны — мобильное приложение (Kivy), v2. Интерфейс на русском.
 
 Запуск на ПК для отладки:  pip install kivy plyer  &&  python main.py
-Сборка APK:               см. README.md (buildozer)
+Сборка APK:               GitHub Actions / buildozer (см. README.md)
 """
 import json
 import os
 
 from kivy.animation import Animation
+from kivy.app import App
 from kivy.clock import Clock
 from kivy.core.window import Window
+from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
 from kivy.lang import Builder
 from kivy.metrics import dp
-from kivy.properties import (BooleanProperty, ListProperty, NumericProperty, StringProperty)
+from kivy.properties import BooleanProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.gridlayout import GridLayout
@@ -21,9 +23,8 @@ from kivy.uix.modalview import ModalView
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 from kivy.utils import get_color_from_hex, platform
-from kivy.app import App
 
-from fortune_core import (FortuneState, INTRO_TEXTS, MAX_OPTIONS, THEMES, THEME_ORDER)
+from fortune_core import FortuneState, INTRO_TEXTS, THEMES, THEME_ORDER
 from sounds import Feedback
 from wheel_widget import FortuneWheel  # noqa: F401  (нужен для KV)
 
@@ -50,7 +51,7 @@ KV = """
 <Root>:
     orientation: 'vertical'
     padding: dp(12), dp(8), dp(12), dp(12)
-    spacing: dp(8)
+    spacing: dp(6)
     canvas.before:
         Color:
             rgba: app.c_bg
@@ -64,30 +65,29 @@ KV = """
         bold: True
         color: app.c_title
         size_hint_y: None
-        height: dp(40)
+        height: dp(38)
+    Label:
+        text: app.intro_text
+        italic: True
+        color: app.c_text
+        font_size: '13sp'
+        halign: 'center'
+        valign: 'middle'
+        text_size: self.width - dp(16), None
+        size_hint_y: None
+        height: self.texture_size[1] + dp(6)
     Label:
         text: app.subtitle
         font_size: '12sp'
         color: app.c_hint
         size_hint_y: None
-        height: dp(16)
+        height: dp(18)
 
     FloatLayout:
         FortuneWheel:
             id: wheel
             size_hint: 1, 1
             pos_hint: {'x': 0, 'y': 0}
-        Label:
-            text: app.intro_text
-            opacity: 0 if app.has_options else 1
-            color: app.c_text
-            font_size: '14sp'
-            halign: 'center'
-            valign: 'middle'
-            text_size: self.width - dp(40), None
-            size_hint: 0.8, 0.5
-            pos_hint: {'center_x': .5, 'center_y': .5}
-            disabled: True
 
     Label:
         text: app.status
@@ -139,6 +139,7 @@ KV = """
 """
 
 STATE_FILE = "state.json"
+NO_OPTIONS_HINT = "Нажмите «Варианты» и впишите свои варианты."
 
 
 class Root(BoxLayout):
@@ -194,10 +195,12 @@ class FortuneApp(App):
 
     def on_pause(self):
         self._save()
+        self.feedback.ambient_stop()
         return True
 
     def on_stop(self):
         self._save()
+        self.feedback.ambient_stop()
         self.wheel.stop()
 
     def _on_key(self, _win, key, *_args):          # кнопка «Назад» на Android
@@ -236,7 +239,7 @@ class FortuneApp(App):
         th = THEMES[name]
         ui = th["ui"]
         self.title_text = th["title"]
-        self.intro_text = INTRO_TEXTS[name]
+        self.intro_text = "«" + INTRO_TEXTS[name] + "»"
         self.c_bg = get_color_from_hex(ui["bg"])
         self.c_title = get_color_from_hex(ui["title"])
         self.c_text = get_color_from_hex(ui["text"])
@@ -247,6 +250,7 @@ class FortuneApp(App):
         self.c_spin_fg = get_color_from_hex(ui["spin_fg"])
         Window.clearcolor = self.c_bg
         self.wheel.set_theme(name)
+        self.feedback.set_theme(name)               # свой набор звуков у каждого стиля
         self._update_subtitle()
 
     def _update_subtitle(self):
@@ -257,6 +261,10 @@ class FortuneApp(App):
         self.wheel.set_options(self.state.wheel_options())
         self.option_count = len(self.state.opts)
         self.has_options = self.state.can_spin
+        if not self.has_options:
+            self.status = NO_OPTIONS_HINT
+        elif self.status == NO_OPTIONS_HINT:
+            self.status = ""
 
     def spin(self):
         if self.busy or not self.state.can_spin:
@@ -265,10 +273,13 @@ class FortuneApp(App):
         self._hide_card()
         self._refresh_wheel()                      # колесо показывает актуальный пул (после сброса круга)
         self.busy = True
-        if not self.wheel.spin():
+        if self.wheel.spin():
+            self.feedback.ambient_start()
+        else:
             self.busy = False
 
     def _on_finished(self, index):
+        self.feedback.ambient_stop()
         self.spins += 1
         self._update_subtitle()
         self._save()
@@ -305,7 +316,6 @@ class FortuneApp(App):
         view = ModalView(size_hint=(0.88, None), height=dp(280), auto_dismiss=True,
                          background="", background_color=(0, 0, 0, 0.35), overlay_color=(0, 0, 0, 0.35))
         box = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(8))
-        from kivy.graphics import Color, Line, RoundedRectangle
         with box.canvas.before:
             Color(*get_color_from_hex(ui["card"]))
             bg = RoundedRectangle(radius=[dp(22)])
@@ -360,6 +370,8 @@ class FortuneApp(App):
     def toggle_sound(self):
         self.sound_on = not self.sound_on
         self.feedback.enabled = self.sound_on
+        if not self.sound_on:
+            self.feedback.ambient_stop()
         self._save()
 
     # ------------------------------------------------------------------ окно «Варианты судьбы»
@@ -369,7 +381,6 @@ class FortuneApp(App):
         view = ModalView(size_hint=(0.96, 0.92), background="", background_color=self.c_bg,
                          overlay_color=(0, 0, 0, 0.6))
         root = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
-        from kivy.graphics import Color, Rectangle
         with root.canvas.before:
             Color(*self.c_bg)
             rect = Rectangle()
@@ -475,7 +486,6 @@ class FortuneApp(App):
         view = ModalView(size_hint=(0.86, None), height=dp(64 + 58 * len(THEME_ORDER)), auto_dismiss=True,
                          background="", background_color=self.c_bg, overlay_color=(0, 0, 0, 0.6))
         box = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(8))
-        from kivy.graphics import Color, Rectangle
         with box.canvas.before:
             Color(*self.c_bg)
             rect = Rectangle()
@@ -483,7 +493,8 @@ class FortuneApp(App):
         box.add_widget(Label(text="Стиль колеса", font_size="18sp", bold=True, color=self.c_title,
                              size_hint_y=None, height=dp(36)))
         for key in THEME_ORDER:
-            name = THEMES[key]["name"] + ("  ✓" if key == self.theme_name else "")
+            # без «галочки»: символа ✓ нет в шрифте Roboto, вместо него рисовался квадратик
+            name = THEMES[key]["name"] + ("  (выбран)" if key == self.theme_name else "")
             ui = THEMES[key]["ui"]
             b = Button(text=name, background_normal="", background_down="", bold=True, font_size="16sp",
                        background_color=get_color_from_hex(ui["bg"]), color=get_color_from_hex(ui["title"]),
