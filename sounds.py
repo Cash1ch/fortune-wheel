@@ -4,7 +4,7 @@
   classic — деревянный щелчок, фанфары, золотой вальс (арфа + бас + пэд)
   nte     — электронные блипы, синтезаторное арпеджио, неоновый синтвейв
   sakura  — щипок кото, глиссандо кото, спокойная пентатоника с бурдоном
-  paws    — звон шкатулки; победа: колокольчик на ошейнике + «мяу»; колыбельная
+  paws    — звон шкатулки; победа: перезвон колокольчиков на ошейнике; колыбельная
 
 Фоновая музыка играет непрерывно, пока приложение открыто и «Звук: вкл».
 Всё синтезируется при первом запуске стиля в фоновом потоке и кэшируется в папке приложения.
@@ -24,7 +24,7 @@ from kivy.utils import platform
 
 RATE = 16000
 TAU = math.tau
-VERSION = "v4"
+VERSION = "v5"
 THEMES = ("classic", "nte", "sakura", "paws")
 BGM_SECONDS = 12.0
 BGM_VOLUME = 0.30
@@ -105,56 +105,6 @@ def _pluck(buf, t0, freq, dur, amp, rnd, damp=0.996):
         ring[k] = damp * 0.5 * (v + ring[(i + 1) % size])
         buf[j] += v * amp
         _yield(i)
-
-
-def _meow(buf, t0, dur=0.62, amp=0.55):
-    """«Мяу» формантным синтезом: высота растёт и падает, форманты ведут «м» → «я» → «у».
-
-    Источник — зубчатая волна с вибрато, звук формируют три параллельных резонатора.
-    Шума нет намеренно: он звучит как шорох."""
-    keys = ((0.00, 300, 1100, 2600), (0.18, 420, 1900, 2800), (0.45, 800, 1500, 2700),
-            (0.80, 450, 950, 2500), (1.00, 350, 800, 2400))                    # (t, F1, F2, F3)
-    bws = (90.0, 120.0, 170.0)
-    weights = (1.0, 0.7, 0.35)
-    n = int(dur * RATE)
-    out = [0.0] * n
-    phase = 0.0
-    states = [[0.0, 0.0] for _ in range(3)]
-    coefs = None
-    for i in range(n):
-        t = i / n
-        if i % 32 == 0:                                   # коэффициенты резонаторов обновляем блоками
-            forms = [keys[-1][1], keys[-1][2], keys[-1][3]]
-            for a in range(len(keys) - 1):
-                if keys[a][0] <= t <= keys[a + 1][0]:
-                    k = (t - keys[a][0]) / (keys[a + 1][0] - keys[a][0])
-                    forms = [keys[a][q] + (keys[a + 1][q] - keys[a][q]) * k for q in (1, 2, 3)]
-                    break
-            coefs = []
-            for f, bw in zip(forms, bws):
-                r = math.exp(-math.pi * bw / RATE)
-                coefs.append((1.0 - r, 2.0 * r * math.cos(TAU * f / RATE), -r * r))
-        vib = 1.0 + 0.02 * math.sin(TAU * 7.0 * i / RATE) * min(1.0, t * 3.0)
-        f0 = (560.0 + 380.0 * math.sin(math.pi * t) ** 0.8 - 60.0 * t) * vib
-        phase += f0 / RATE
-        if phase >= 1.0:
-            phase -= 1.0
-        src = 0.75 * (2.0 * phase - 1.0) + 0.25 * math.sin(TAU * phase)
-        y = 0.0
-        for q in range(3):
-            g, a1, a2 = coefs[q]
-            s = states[q]
-            v = g * src + a1 * s[0] + a2 * s[1]
-            s[1], s[0] = s[0], v
-            y += weights[q] * v
-        env = (0.35 + 0.65 * min(1.0, t / 0.12)) * min(1.0, (1.0 - t) / 0.2)
-        out[i] = y * env
-        _yield(i)
-    peak = max(1e-9, max(abs(x) for x in out))
-    i0 = int(t0 * RATE)
-    for i in range(n):
-        if i0 + i < len(buf):
-            buf[i0 + i] += out[i] / peak * amp
 
 
 def _finish(buf, peak, fade=0.02):
@@ -261,12 +211,14 @@ def _sakura_bgm():
 def _paws():
     tick = _buf(0.06)
     _note(tick, 0, 2093.0, 0.06, 0.5, 80, ((1, 1.0), (2.76, 0.3)))
-    win = _buf(2.4)
+    win = _buf(2.2)
     bell = ((1, 1.0), (2.76, 0.4), (3.4, 0.2))                                  # колокольчик: неточные обертоны
     for t, a, fm in ((0.00, 0.9, 1.00), (0.05, 0.7, 1.03), (0.11, 0.8, 0.98), (0.17, 0.55, 1.02), (0.26, 0.4, 1.00)):
-        _note(win, t, 2000.0 * fm, 0.6, 0.22 * a, 9, bell)                      # звяканье на ошейнике
-    _meow(win, 0.62)                                                           # «мяу»
-    _note(win, 1.45, 2300.0, 0.9, 0.16, 6, bell)                                # последний тихий «динь»
+        _note(win, t, 2000.0 * fm, 0.6, 0.22 * a, 9, bell)                      # первый перезвон на ошейнике
+    for t, a, fm in ((0.55, 0.7, 1.00), (0.61, 0.55, 1.02), (0.68, 0.45, 0.99)):
+        _note(win, t, 2400.0 * fm, 0.6, 0.20 * a, 9, bell)                      # второй, выше и тише
+    _note(win, 1.10, 2300.0, 1.0, 0.16, 5, bell)                                # последний тихий «динь»
+    _note(win, 1.25, 3100.0, 0.8, 0.08, 6, ((1, 1.0), (2.76, 0.3)))             # и искорка над ним
     return _finish(tick, 0.85, 0.002), _finish(win, 0.85), _paws_bgm()
 
 
